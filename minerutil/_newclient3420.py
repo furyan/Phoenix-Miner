@@ -1,5 +1,5 @@
 # -*- test-case-name: twisted.web.test.test_newclient -*-
-# Copyright (c) 2009 Twisted Matrix Laboratories.
+# Copyright (c) Twisted Matrix Laboratories.
 # See LICENSE for details.
 
 """
@@ -216,6 +216,10 @@ class HTTPParser(LineReceiver):
     #
     # -exarkun
 
+    # Some servers (like http://news.ycombinator.com/) return status lines and
+    # HTTP headers delimited by \n instead of \r\n.
+    delimiter = '\n'
+
     CONNECTION_CONTROL_HEADERS = set([
             'content-length', 'connection', 'keep-alive', 'te', 'trailers',
             'transfer-encoding', 'upgrade', 'proxy-connection'])
@@ -244,6 +248,10 @@ class HTTPParser(LineReceiver):
         """
         Handle one line from a response.
         """
+        # Handle the normal CR LF case.
+        if line[-1:] == '\r':
+            line = line[:-1]
+
         if self.state == STATUS:
             self.statusReceived(line)
             self.state = HEADER
@@ -507,23 +515,23 @@ class Request:
     """
     A L{Request} instance describes an HTTP request to be sent to an HTTP
     server.
-
+    
     @ivar method: The HTTP method to for this request, ex: 'GET', 'HEAD',
         'POST', etc.
     @type method: C{str}
-
+    
     @ivar uri: The relative URI of the resource to request.  For example,
         C{'/foo/bar?baz=quux'}.
     @type uri: C{str}
-
+    
     @ivar headers: Headers to be sent to the server.  It is important to
         note that this object does not create any implicit headers.  So it
         is up to the HTTP Client to add required headers such as 'Host'.
     @type headers: L{twisted.web.http_headers.Headers}
-
+    
     @ivar bodyProducer: C{None} or an L{IBodyProducer} provider which
         produces the content body to send to the remote HTTP server.
-
+    
     @ivar persistent: Set to C{True} when you use HTTP persistent connecton.
     @type persistent: Boolean
     """
@@ -550,6 +558,7 @@ class Request:
             requestLines.append('Connection: Keep-Alive\r\n')
         else:
             requestLines.append('Connection: close\r\n')
+        
         if TEorCL is not None:
             requestLines.append(TEorCL)
         for name, values in self.headers.getAllRawHeaders():
@@ -1246,6 +1255,7 @@ class HTTP11ClientProtocol(Protocol):
     """
     _state = 'QUIESCENT'
     _parser = None
+    persistent = False
 
     @property
     def state(self):
@@ -1270,6 +1280,7 @@ class HTTP11ClientProtocol(Protocol):
             may errback with L{RequestNotSent} if it is not possible to send
             any more requests using this L{HTTP11ClientProtocol}.
         """
+        self.persistent = request.persistent
         if self._state != 'QUIESCENT':
             return fail(RequestNotSent())
 
@@ -1298,7 +1309,8 @@ class HTTP11ClientProtocol(Protocol):
                 self._finishedRequest.errback(
                     Failure(RequestGenerationFailed([err])))
             else:
-                log.err(err, "foo")
+                log.err(err, 'Error writing request, but not in valid state '
+                             'to finalize request: %s' % self._state)
 
         _requestDeferred.addCallbacks(cbRequestWrotten, ebRequestWriting)
 
@@ -1326,20 +1338,20 @@ class HTTP11ClientProtocol(Protocol):
             # that Deferred.
             self._state = 'TRANSMITTING_AFTER_RECEIVING_RESPONSE'
             self._responseDeferred.chainDeferred(self._finishedRequest)
-
+        
         reason = ConnectionDone("synthetic!")
-        parser = self._parser
-        if parser is not None:
-            connection = parser.connHeaders.getRawHeaders('Connection')
+        
+        if self._parser is not None:
+            connection = self._parser.connHeaders.getRawHeaders('Connection')
             keepalive = connection and connection[0].lower() == 'keep-alive'
         else:
             keepalive = False
-
-        if (connHeaders is not None) and ('close' in connHeaders):
-            self._giveUp(Failure(reason))
+            
+        if self.persistent and keepalive:
+            self._disconnectParser(Failure(reason))
         else:
-            # It's persistent connection
-            self._disconnectParser(reason)
+            self._giveUp(Failure(reason))
+            self.abort()
 
 
     def _disconnectParser(self, reason):

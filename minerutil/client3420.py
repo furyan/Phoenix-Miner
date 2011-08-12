@@ -45,7 +45,13 @@ class HTTPPageGetter(http.HTTPClient):
     def connectionMade(self):
         method = getattr(self.factory, 'method', 'GET')
         self.sendCommand(method, self.factory.path)
-        self.sendHeader('Host', self.factory.headers.get("host", self.factory.host))
+        if self.factory.scheme == 'http' and self.factory.port != 80:
+            host = '%s:%s' % (self.factory.host, self.factory.port)
+        elif self.factory.scheme == 'https' and self.factory.port != 443:
+            host = '%s:%s' % (self.factory.host, self.factory.port)
+        else:
+            host = self.factory.host
+        self.sendHeader('Host', self.factory.headers.get("host", host))
         self.sendHeader('User-Agent', self.factory.agent)
         data = getattr(self.factory, 'postdata', None)
         if data is not None:
@@ -144,7 +150,8 @@ class HTTPPageGetter(http.HTTPClient):
     def handleStatus_302(self):
         if self.afterFoundGet:
             self.handleStatus_303()
-        self.handleStatus_301()
+        else:
+            self.handleStatus_301()
 
 
     def handleStatus_303(self):
@@ -360,7 +367,8 @@ class HTTPDownloader(HTTPClientFactory):
                  method='GET', postdata=None, headers=None,
                  agent="Twisted client", supportPartial=0,
                  timeout=0, cookies=None, followRedirect=1,
-                 redirectLimit=20):
+                 redirectLimit=20, afterFoundGet=False):
+        
         self.requestedPartial = 0
         if isinstance(fileOrName, types.StringTypes):
             self.fileName = fileOrName
@@ -377,8 +385,8 @@ class HTTPDownloader(HTTPClientFactory):
         HTTPClientFactory.__init__(
             self, url, method=method, postdata=postdata, headers=headers,
             agent=agent, timeout=timeout, cookies=cookies,
-            followRedirect=followRedirect, redirectLimit=redirectLimit)
-
+            followRedirect=followRedirect, redirectLimit=redirectLimit,
+            afterFoundGet=afterFoundGet)
 
     def gotHeaders(self, headers):
         HTTPClientFactory.gotHeaders(self, headers)
@@ -647,7 +655,9 @@ class Agent(object):
     @since: 9.0
     """
     _protocol = HTTP11ClientProtocol
-    maxConnections = 2
+    maxConnections = 2 # RFC 2616: A single-user client SHOULD NOT
+                       # maintain more than 2 connections with any
+                       # server or proxy.
 
     def __init__(self, reactor, contextFactory=WebClientContextFactory(),
                  persistent=False):
@@ -785,17 +795,17 @@ class Agent(object):
         """
         protos = self._protocolCache.setdefault((scheme, host, port), [])
         maybeDisconnected = False
-        while protos:
-            # connection exists
-            p = protos.pop(0)
+        d = None
+        for p in protos:
             if p.state == 'QUIESCENT':
-                d = defer.succeed(p)
+                # available existing connection
                 maybeDisconnected = True
-                break
-        else:
+                d = defer.succeed(p)
+                break 
+        if not d:
             # new connection
             d = self._connect(scheme, host, port)
-        req = Request(method, path, headers, bodyProducer,
+        req = Request(method, path, headers, bodyProducer, 
                       persistent=self.persistent)
 
         def saveProtocol(response, proto):
