@@ -72,7 +72,7 @@ class RPCPoller(object):
         self.agent = Agent(reactor, persistent=True)
         self.askInterval = None
         self.askCall = None
-        self.currentlyAsking = False
+        self.currentAsk = None
     
     def setInterval(self, interval):
         """Change the interval at which to poll the getwork() function."""
@@ -96,48 +96,47 @@ class RPCPoller(object):
                 pass
             self.askCall = None
     
-
     def ask(self):
         """Run a getwork request immediately."""
         
-        if self.currentlyAsking:
-            return
-        self.currentlyAsking = True
+        if self.currentAsk and not self.currentAsk.called:
+             return
         self._stopCall()
         
-        d = self.call('getwork')
+        self.currentAsk = self.call('getwork', timeout=15.0)
         
         def errback(failure):
-            if not self.currentlyAsking:
-                return
-            self.currentlyAsking = False
-            if failure.check(ServerMessage):
-                self.root.runCallback('msg', failure.getErrorMessage())
+            try:
+                if failure.check(ServerMessage):
+                    self.root.runCallback('msg', failure.getErrorMessage())
+                else:
+                    self.root.runCallback('debug', failure.getErrorMessage())
+                    
+                self.root._failure()
+            finally:
+                self._startCall()
             
-            self.root._failure()
-            self._startCall()
         def errback_delay(x): reactor.callLater(0, errback, x)
-        d.addErrback(errback_delay)
+        self.currentAsk.addErrback(errback_delay)
         
         def callback(x):
-            if not self.currentlyAsking:
-                return
-            self.currentlyAsking = False
             try:
-                (headers, result) = x
-            except TypeError:
-                return
-            self.root.handleWork(result)
-            self.root.handleHeaders(headers)
-            self._startCall()
+                try:
+                    (headers, result) = x
+                except TypeError:
+                    return
+                self.root.handleWork(result)
+                self.root.handleHeaders(headers)
+            finally:
+                self._startCall()
         # Minor bug in the #3420 patch; you can't start new requests during
         # callbacks from old ones, so this function has the reactor call it a
         # little bit later (with no artificial delay)
         def callback_delay(x): reactor.callLater(0, callback, x)
-        d.addCallback(callback_delay)
+        self.currentAsk.addCallback(callback_delay)
     
     @defer.inlineCallbacks
-    def call(self, method, params=[]):
+    def call(self, method, params=[], timeout=None):
         """Call the specified remote function."""
         
         body = json.dumps({'method': method, 'params': params, 'id': 1})
@@ -150,6 +149,12 @@ class RPCPoller(object):
             }), StringBodyProducer(body))
         
         d = defer.Deferred()
+        if timeout:
+            def cancelDeferred():
+                try:
+                    d.errback(error.TimeoutError())
+                except defer.AlreadyCalledError: pass
+            reactor.callLater(timeout, cancelDeferred)
         response.deliverBody(BodyLoader(d))
         data = yield d
         result = self.parse(data)
@@ -205,33 +210,32 @@ class LongPoller(object):
     
     @defer.inlineCallbacks
     def _requestComplete(self, response):
-        if not self.polling:
-            return
-        
-        if isinstance(response, failure.Failure):
-            self._request()
-            return
-        
-        d = defer.Deferred()
-        response.deliverBody(BodyLoader(d))
         try:
-            data = yield d
-        except ResponseFailed:
-            self._request()
-            return
+            if not self.polling:
+                return
         
-        try:
-            result = RPCPoller.parse(data)
-        except ValueError:
-            self._request()
-            return
-        except ServerMessage:
-            exctype, value = sys.exc_info()[:2]
-            self.root.runCallback('msg', str(value))
-            self._request()
-            return
+            if isinstance(response, failure.Failure):
+                return
+            
+            d = defer.Deferred()
+            response.deliverBody(BodyLoader(d))
+            try:
+                data = yield d
+            except ResponseFailed:
+                return
+            
+            try:
+                result = RPCPoller.parse(data)
+            except ValueError:
+                return
+            except ServerMessage:
+                exctype, value = sys.exc_info()[:2]
+                self.root.runCallback('msg', str(value))
+                return
         
-        self._request()
+        finally:
+            self._request()
+        
         self.root.handleWork(result, True)
 
 class RPCClient(ClientBase):
