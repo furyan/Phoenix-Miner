@@ -799,7 +799,7 @@ class Agent(object):
                       persistent=self.persistent)
 
         def saveProtocol(response, proto):
-            if self.persistent:
+            if self.persistent and proto not in protos:
                 protos.append(proto)
             return response
 
