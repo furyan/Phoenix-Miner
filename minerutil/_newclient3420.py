@@ -1333,7 +1333,7 @@ class HTTP11ClientProtocol(Protocol):
             connection = parser.connHeaders.getRawHeaders('Connection')
             keepalive = connection and connection[0].lower() == 'keep-alive'
         else:
-             keepalive = False
+            keepalive = False
 
         if (connHeaders is not None) and ('close' in connHeaders):
             self._giveUp(Failure(reason))

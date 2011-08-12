@@ -41,12 +41,19 @@ class Miner(object):
         self.queue = None
         self.idle = True
         self.cores = []
+        self.backup = False
+        self.failures = 0
         self.lastMetaRate = 0.0
         self.lastRateUpdate = time()
     
     # Connection callbacks...
     def onFailure(self):
         self.logger.reportConnectionFailed()
+        
+        #handle failover if url2 has been specified
+        if self.options.url2 is not None:
+            self.failoverCheck()
+            
     def onConnect(self):
         self.logger.reportConnected(True)
     def onDisconnect(self):
@@ -66,6 +73,51 @@ class Miner(object):
         self.logger.log(message)
     def onDebug(self, message):
         self.logger.reportDebug(message)
+    
+    def failoverCheck(self):
+        if self.backup:
+            if (self.failures >= 1):
+                #disconnect and set connection to none
+                self.connection.disconnect()
+                self.connection = None
+                
+                #log
+                self.logger.log("Backup server failed,")
+                self.logger.log("attempting to return to primary server.")
+                
+                #reset failure count and return to primary server
+                self.failures = 0
+                self.backup = False
+                self.connection = self.options.makeConnection(self, False, True)
+                self.connection.connect()
+            else:
+                self.failures += 1
+        else:
+            #The main pool must fail 3 times before moving to the backup pool
+            if (self.failures >= 2):
+                #disconnect and set connection to none
+                self.connection.disconnect()
+                self.connection = None
+                
+                #log
+                self.logger.log("Primary server failed too many times,")
+                self.logger.log("attempting to connect to backup server.")
+                
+                #reset failure count and connect to backup server
+                self.failures = 0
+                self.backup = True
+                self.connection = self.options.makeConnection(self, True, True)
+                self.connection.connect()
+            else:
+                self.failures += 1
+                
+                #since the main pool may fail from time to time, decrement the
+                #failure count after 5 minutes so we don't end up moving to the
+                #back pool when it isn't nessesary
+                def decrementFailures():
+                    if self.failures > 1 and (not self.backup):
+                        self.failures -= 1
+                reactor.callLater(300, decrementFailures)
     
     def start(self, options):
         #Configures the Miner via the options specified and begins mining.

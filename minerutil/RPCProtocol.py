@@ -81,6 +81,8 @@ class RPCPoller(object):
     
     def _startCall(self):
         self._stopCall()
+        if self.root.disconnected:
+            return
         if self.askInterval:
             self.askCall = reactor.callLater(self.askInterval, self.ask)
         else:
@@ -256,7 +258,7 @@ class RPCClient(ClientBase):
     
         self.poller = RPCPoller(self)
         self.longPoller = None # Gets created later...
-        
+        self.disconnected = False
         self.saidConnected = False
         self.block = None
     
@@ -271,7 +273,7 @@ class RPCClient(ClientBase):
         """
         
         self._deactivateCallbacks()
-        
+        self.disconnected = True
         self.poller.setInterval(None)
         if self.longPoller:
             self.longPoller.stop()
