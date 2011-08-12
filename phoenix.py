@@ -39,14 +39,12 @@ class CommandLineOptions(object):
     def __init__(self):
         self.parsedSettings = None
         self.url = None
-        
+        self.url2 = None
         self.logger = None
         self.connection = None
         self.kernel = None
         self.queue = None
-        
         self.kernelOptions = {}
-        
         self._parse()
     
     def _parse(self):
@@ -57,6 +55,9 @@ class CommandLineOptions(object):
             help="the name of the kernel to use")
         parser.add_option("-u", "--url", dest="url", default=None,
             help="the URL of the mining server to work for [REQUIRED]")
+        parser.add_option("-b", "--backupurl", dest="url2", default=None,
+            help="the URL of the backup mining server to work for if the "
+            "primary is down [OPTIONAL]")
         parser.add_option("-q", "--queuesize", dest="queuesize", type="int",
             default=1, help="how many work units to keep queued at all times")
         parser.add_option("-a", "--avgsamples", dest="avgsamples", type="int",
@@ -70,6 +71,7 @@ class CommandLineOptions(object):
             exit()
         else:
             self.url = self.parsedSettings.url
+            self.url2 = self.parsedSettings.url2
         
         for arg in args:
             self._kernelOption(arg)
@@ -91,10 +93,14 @@ class CommandLineOptions(object):
             self.logger = ConsoleLogger(miner, self.parsedSettings.verbose)
         return self.logger
     
-    def makeConnection(self, requester):
+    def makeConnection(self, requester, backup = False, force = False):
+        if force:
+            self.connection = None
+            
         if not self.connection:
+            url = self.url2 if backup else self.url
             try:
-                self.connection = minerutil.openURL(self.url, requester)
+                self.connection = minerutil.openURL(url, requester)
             except ValueError, e:
                 print(e)
                 exit()
