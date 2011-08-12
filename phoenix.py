@@ -41,7 +41,6 @@ class CommandLineOptions(object):
         self.url = None
         self.url2 = None
         self.logger = None
-        self.connection = None
         self.kernel = None
         self.queue = None
         self.kernelOptions = {}
@@ -93,18 +92,14 @@ class CommandLineOptions(object):
             self.logger = ConsoleLogger(miner, self.parsedSettings.verbose)
         return self.logger
     
-    def makeConnection(self, requester, backup = False, force = False):
-        if force:
-            self.connection = None
-            
-        if not self.connection:
-            url = self.url2 if backup else self.url
-            try:
-                self.connection = minerutil.openURL(url, requester)
-            except ValueError, e:
-                print(e)
-                exit()
-        return self.connection
+    def makeConnection(self, requester, backup = False):
+        url = self.url2 if backup else self.url
+        try:
+            connection = minerutil.openURL(url, requester)
+        except ValueError, e:
+            print(e)
+            exit()
+        return connection
     
     def makeKernel(self, requester):
         if not self.kernel:

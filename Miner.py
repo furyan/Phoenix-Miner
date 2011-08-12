@@ -29,7 +29,7 @@ from KernelInterface import KernelInterface
 class Miner(object):
     
     # This must be manually set for Git
-    VER = (1, 6, 0)
+    VER = (1, 6, 1)
     REVISION = reduce(lambda x,y: x*100+y, VER)
     VERSION = 'v%s' % '.'.join(str(x) for x in VER)
     
@@ -88,7 +88,7 @@ class Miner(object):
                 #reset failure count and return to primary server
                 self.failures = 0
                 self.backup = False
-                self.connection = self.options.makeConnection(self, False, True)
+                self.connection = self.options.makeConnection(self)
                 self.connection.connect()
             else:
                 self.failures += 1
@@ -106,7 +106,7 @@ class Miner(object):
                 #reset failure count and connect to backup server
                 self.failures = 0
                 self.backup = True
-                self.connection = self.options.makeConnection(self, True, True)
+                self.connection = self.options.makeConnection(self, True)
                 self.connection.connect()
             else:
                 self.failures += 1
