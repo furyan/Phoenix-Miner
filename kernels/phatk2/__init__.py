@@ -145,7 +145,7 @@ class MiningKernel(object):
         'WORKSIZE', int, default=None, advanced=True,
         help='The worksize to use when executing CL kernels.')
     BFI_INT = KernelOption(
-        'BFI_INT', bool, default=False, advanced=True,
+        'BFI_INT', bool, default=True, advanced=True,
         help='Use the BFI_INT instruction for AMD/ATI GPUs.')
     OUTPUT_SIZE = WORKSIZE
     
