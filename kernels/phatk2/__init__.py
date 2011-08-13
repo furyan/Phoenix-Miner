@@ -342,6 +342,15 @@ class MiningKernel(object):
             if binary: binary.close()
 
         cl.unload_compiler()
+        
+        # Since this can't be run before compiling the kernel, all we can do is
+        # check to make sure the selected size is not too large
+        maxSize = self.kernel.search.get_work_group_info(
+                  cl.kernel_work_group_info.WORK_GROUP_SIZE, self.device)
+                  
+        if self.WORKSIZE > maxSize:
+            self.interface.fatal('Maximum WORKSIZE on the selected device is '
+                    + str(maxSize))
 
 
     def start(self):

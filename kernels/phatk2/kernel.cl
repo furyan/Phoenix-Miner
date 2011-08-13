@@ -138,7 +138,8 @@ __constant uint H[8] = {
 #define Barrier3(n) t1 = t1C((n))
 
 __kernel
-__attribute__((reqd_work_group_size(WORKSIZE, 1, 1)))
+//removed this to allow detection of invalid work size
+//__attribute__((reqd_work_group_size(WORKSIZE, 1, 1)))
 void search(	const uint state0, const uint state1, const uint state2, const uint state3,
 						const uint state4, const uint state5, const uint state6, const uint state7,
 						const uint B1, const uint C1, const uint D1,
