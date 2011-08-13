@@ -150,7 +150,7 @@ class MiningKernel(object):
     OUTPUT_SIZE = WORKSIZE
     
     # This must be manually set for Git
-    REVISION = 116
+    REVISION = 117
     
     def __init__(self, interface):
         platforms = cl.get_platforms()
