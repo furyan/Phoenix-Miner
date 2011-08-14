@@ -388,6 +388,7 @@ class HTTPDownloader(HTTPClientFactory):
             followRedirect=followRedirect, redirectLimit=redirectLimit,
             afterFoundGet=afterFoundGet)
 
+
     def gotHeaders(self, headers):
         HTTPClientFactory.gotHeaders(self, headers)
         if self.requestedPartial:
@@ -402,6 +403,7 @@ class HTTPDownloader(HTTPClientFactory):
                 self.requestedPartial = 0
 
 
+
     def openFile(self, partialContent):
         if partialContent:
             file = open(self.fileName, 'rb+')
@@ -409,6 +411,7 @@ class HTTPDownloader(HTTPClientFactory):
         else:
             file = open(self.fileName, 'wb')
         return file
+
 
     def pageStart(self, partialContent):
         """Called on page download start.
@@ -659,6 +662,7 @@ class Agent(object):
                        # maintain more than 2 connections with any
                        # server or proxy.
 
+
     def __init__(self, reactor, contextFactory=WebClientContextFactory(),
                  persistent=False):
         self._reactor = reactor
@@ -795,17 +799,17 @@ class Agent(object):
         """
         protos = self._protocolCache.setdefault((scheme, host, port), [])
         maybeDisconnected = False
-        d = None
-        for p in protos:
+        while protos:
+            # connection exists
+            p = protos.pop(0)
             if p.state == 'QUIESCENT':
-                # available existing connection
-                maybeDisconnected = True
                 d = defer.succeed(p)
-                break 
-        if not d:
+                maybeDisconnected = True
+                break
+        else:
             # new connection
             d = self._connect(scheme, host, port)
-        req = Request(method, path, headers, bodyProducer, 
+        req = Request(method, path, headers, bodyProducer,
                       persistent=self.persistent)
 
         def saveProtocol(response, proto):
