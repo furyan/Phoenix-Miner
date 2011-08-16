@@ -1,4 +1,4 @@
-# Copyright (C) 2011 by jedi95 <jedi95@gmail.com> and 
+# Copyright (C) 2011 by jedi95 <jedi95@gmail.com> and
 #                       CFSworks <CFSworks@gmail.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -34,6 +34,8 @@ from twisted.python import failure
 
 from ClientBase import ClientBase, AssignedWork
 
+class ServerMessage(Exception): pass
+
 class StringBodyProducer(object):
     """Something Twisted itself needs..."""
     implements(IBodyProducer)
@@ -62,8 +64,6 @@ class BodyLoader(Protocol):
         else:
             self.d.callback(self.data)
 
-class ServerMessage(Exception): pass
-        
 class RPCPoller(object):
     """Polls the root's chosen bitcoind or pool RPC server for work."""
     
@@ -160,7 +160,6 @@ class RPCPoller(object):
         response.deliverBody(BodyLoader(d))
         data = yield d
         result = self.parse(data)
-
         defer.returnValue((response.headers, result))
     
     @classmethod
@@ -254,7 +253,7 @@ class RPCClient(ClientBase):
                 self.params[s[0]] = s[1]
         self.auth = 'Basic ' + ('%s:%s' % (
             url.username, url.password)).encode('base64').strip()
-        self.version = 'RPCClient/1.6'
+        self.version = 'RPCClient/1.7'
     
         self.poller = RPCPoller(self)
         self.longPoller = None # Gets created later...
@@ -310,12 +309,26 @@ class RPCClient(ClientBase):
             try:
                 (headers, accepted) = x
             except TypeError:
+                self.runCallback('debug', 
+                        "TypeError in RPC sendResult callback")
                 return False
+            
+            if (not accepted):
+                self.handleRejectReason(headers)
+            
             return accepted
         
         d.addErrback(errback)
         d.addCallback(callback)
         return d
+    
+    #if the server sends a reason for reject then print that
+    def handleRejectReason(self, headers):
+        reason = headers.getRawHeaders('X-Reject-Reason') or None
+        if reason is not None:
+            try:
+                self.runCallback('debug', "Reject reason: " + str(reason))
+            except Exception: pass
     
     def useAskrate(self, variable):
         defaults = {'askrate': 10, 'retryrate': 15, 'lpaskrate': 0}
