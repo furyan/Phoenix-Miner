@@ -72,14 +72,12 @@ __constant uint H[8] = {
 	
 	// This is the BFI_INT function
 	#define Ch(x, y, z) amd_bytealign(x,y,z)
-	// Ma can also be implemented in terms of BFI_INT...
-	#define Ma(z, x, y) amd_bytealign(z^x,y,x)
 #else
-	#define Ch(x, y, z) bitselect(x,y,z)
-	// Ma can also be implemented in terms of bitselect
-	#define Ma(z, x, y) bitselect(z^x,y,x)
+	#define Ch(x, y, z) bitselect(z,y,x)
 #endif
 
+// Ma can be implemented in terms of Ch
+#define Ma(x, y, z) Ch((z^x),y,x)
 
 //Various intermediate calculations for each SHA round
 #define s0(n) (S0(Vals[(0 + 128 - (n)) % 8]))
